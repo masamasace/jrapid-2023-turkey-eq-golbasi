@@ -103,9 +103,26 @@
             return '#0000ff';
         }
 
-        function onEachFeature(feature, layer) {
+        function onEachFeature(feature, layer, type) {
+            if (type == "PDCPT") {
+                return onEachFeaturePDCPT(feature, layer);
+            }
+            else if (type == "microtremor") {
+                return onEachFeatureMT(feature, layer);
+            }
+        }
+        function onEachFeaturePDCPT(feature, layer) {
             if (feature.properties) {
-                const popupContent = createPopupContent(feature.properties);
+                const popupContent = createPopupContentPDCPT(feature.properties);
+                layer.bindPopup(popupContent, {
+                    maxWidth: 400
+                });
+            }
+        }
+
+        function onEachFeatureMT(feature, layer) {
+            if (feature.properties) {
+                const popupContent = createPopupContentMT(feature.properties);
                 layer.bindPopup(popupContent, 
                     { maxWidth: 400}
                 );
@@ -130,7 +147,7 @@
                 const doc = parser.parseFromString(text, 'text/html');
                 const plotlyDivId = doc.querySelectorAll('div')[1].id;
 
-                var updatedText = text.replaceAll(plotlyDivId, 'plotly-graph-base');
+                var updatedText = text.replaceAll(plotlyDivId, 'plotly-graph-MT-base');
                 const updatedDoc = parser.parseFromString(updatedText, 'text/html');
                 const updatedPlotlyScript = updatedDoc.querySelector('script').innerHTML;
 
@@ -142,7 +159,56 @@
             
         }
 
-        function createPopupContent(properties) {
+        function createPopupContentPDCPT(properties) {
+            var popupContent = document.createElement('div');
+            popupContent.id = 'plotly-graph-PDCPT';
+            popupContent.style.Width = '400px';
+
+            console.log(popupContent)
+
+            const pdcpt_csv_path = `src/PDCPT/` + properties['name'] + `.csv`;
+
+            // get csv data
+            fetch(pdcpt_csv_path)
+                .then(response => response.text())
+                .then(csvText => {
+                    Papa.parse(csvText, {
+                        header: true,
+                        dynamicTyping: true,
+                        complete: function (results) {
+                            // create inner variables with depth, N_SPT_okada
+                            const plotly_data = [{
+                                x: results.data.map(row => row.depth),
+                                y: results.data.map(row => row.N_SPT_okada),
+                                type: 'scatter',
+                                mode: 'lines+markers',
+                                marker: { color: 'blue' },
+                                name: 'N_SPT_okada'
+                            }];
+                            const layout = {
+                                title: properties['name'],
+                                xaxis: {
+                                    title: 'Depth (m)'
+                                },
+                                yaxis: {
+                                    title: 'N_SPT_okada'
+                                }
+                            };
+                            // insert plotly graph into script tag
+                            plotly_html_str = `
+                                <script>
+                                    Plotly.newPlot('plotly-graph-PDCPT', ${JSON.stringify(plotly_data)}, ${JSON.stringify(layout)});
+                                </script>
+                            `;
+                            popupContent.innerHTML = plotly_html_str;
+                        }
+                    });
+                });
+            
+            return popupContent;
+        }
+
+        function createPopupContentMT(properties) {
 
             var popupContent = document.createElement('div');
             popupContent.style.Width = '400px';
@@ -181,7 +247,7 @@
             popupContent.appendChild(tableDiv);
 
             var graphDiv = document.createElement('div');
-            graphDiv.id = 'plotly-graph';
+            graphDiv.id = 'plotly-graph-MT';
 
             const yearMonth = properties.start_datetime.slice(0, 6);
             const subDirNames = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
@@ -210,15 +276,20 @@
             };
         }
 
-        function pointToLayer(feature, latlng) {
-            return L.circleMarker(latlng, {
-                radius: 8,
-                fillColor: getColorMTFreq(feature.properties['mean_curve_freq']),
-                color: "#000",
-                weight: 1,
-                opacity: 1,
-                fillOpacity: 0.8
-            });
+        function pointToLayer(feature, latlng, type) {
+            if (type === 'PDCPT') {
+                return L.marker(latlng);
+            }
+            else if (type === 'microtremor') {
+                return L.circleMarker(latlng, {
+                    radius: 8,
+                    fillColor: getColorMTFreq(feature.properties['mean_curve_freq']),
+                    color: "#000",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                });
+            }
         }
 
         function addMicrotremorData(url, overlayName) {
@@ -231,8 +302,12 @@
                         complete: function (results) {
                             const geojson = csvToGeoJSON(results.data);
                             const geoJsonLayer = L.geoJSON(geojson, {
-                                pointToLayer: pointToLayer,
-                                onEachFeature: onEachFeature
+                                pointToLayer: function (feature, latlng) {
+                                    return pointToLayer(feature, latlng, 'microtremor');
+                                },
+                                onEachFeature: function (feature, layer) {
+                                    return onEachFeature(feature, layer, 'microtremor');
+                                }
                             }).addTo(map);
                             overlays[overlayName] = geoJsonLayer;
                             // remove the previous L.control and add a new one
@@ -245,9 +320,39 @@
                 });
         }
 
+        function addPDCPTData(url, overlayName) {
+            fetch(url)
+                .then(response => response.text())
+                .then(csvText => {
+                    Papa.parse(csvText, {
+                        header: true,
+                        dynamicTyping: true,
+                        complete: function (results) {
+                            const geojson = csvToGeoJSON(results.data);
+                            const geoJsonLayer = L.geoJSON(geojson, {
+                                pointToLayer: function (feature, latlng) {
+                                    return pointToLayer(feature, latlng, 'PDCPT');
+                                },
+                                onEachFeature: function (feature, layer) {
+                                    return onEachFeature(feature, layer, 'PDCPT');
+                                }
+                            }).addTo(map);
+
+                            overlays[overlayName] = geoJsonLayer;
+                            // remove the previous L.control and add a new one
+                            if (control) {
+                                map.removeControl(control);
+                            }
+                            control = L.control.layers(baseLayers, overlays).addTo(map);
+                        }
+                    });
+                });
+        }
 
         addMicrotremorData('src/microtremor/202310/group_list.csv', "Microtremor 202310");
         addMicrotremorData('src/microtremor/202406/group_list.csv', "Microtremor 202406");
+        addPDCPTData('src/PDCPT/PDCPT_summary.csv', "PDCPT");
+
     </script>
 </body>
 
