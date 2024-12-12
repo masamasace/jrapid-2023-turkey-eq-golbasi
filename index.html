@@ -195,11 +195,11 @@
                                 }
                             };
                             // insert plotly graph into script tag
-                            plotly_html_str = `
-                                \<script>
-                                    Plotly.newPlot('plotly-graph-PDCPT', ${JSON.stringify(plotly_data)}, ${JSON.stringify(layout)});
-                                \</script>
+                            const script = document.createElement('script');
+                            script.innerHTML = `
+                                Plotly.newPlot('plotly-graph-PDCPT', ${JSON.stringify(plotly_data)}, ${JSON.stringify(layout)});
                             `;
+                            popupContent.appendChild(script);
                             popupContent.innerHTML = plotly_html_str;
                         }
                     });
