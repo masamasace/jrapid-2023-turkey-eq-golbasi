@@ -196,9 +196,9 @@
                             };
                             // insert plotly graph into script tag
                             plotly_html_str = `
-                                <script>
+                                \<script>
                                     Plotly.newPlot('plotly-graph-PDCPT', ${JSON.stringify(plotly_data)}, ${JSON.stringify(layout)});
-                                </script>
+                                \</script>
                             `;
                             popupContent.innerHTML = plotly_html_str;
                         }
